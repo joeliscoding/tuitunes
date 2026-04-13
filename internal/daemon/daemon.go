@@ -15,9 +15,13 @@ import (
 )
 
 func Run() error {
+	// TODO: make socket path configurable in global config
 	socketPath := "/tmp/tuitunesdaemon.sock"
 
-	_ = os.Remove(socketPath)
+	if err := os.Remove(socketPath); err != nil && !os.IsNotExist(err) {
+		return err
+	}
+
 	socket, err := net.Listen("unix", socketPath) // listen on Unix domain socket
 	if err != nil {
 		return err
@@ -56,8 +60,9 @@ func Run() error {
 			}
 
 			if strings.Contains(string(buf[:n]), "play") {
-				fmt.Println("Playing audio...")
-				playAudio()
+				//TODO: make this more robust, maybe use JSON to send commands and data
+				fmt.Println("Playing audio..." + string(buf[5:n]))
+				playAudio(string(buf[5:n])) // extract file path from command
 			} else {
 				fmt.Printf("Received: %s", string(buf[:n]))
 			}
@@ -65,8 +70,8 @@ func Run() error {
 	}
 }
 
-func playAudio() {
-	f, err := os.Open("test.mp3")
+func playAudio(file string) {
+	f, err := os.Open(file)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -80,5 +85,12 @@ func playAudio() {
 	speaker.Init(format.SampleRate, format.SampleRate.N(time.Second/10))
 
 	speaker.Play(streamer)
+
+	// nowplayinghelper is not done yet
+	// err = macos.UpdateNowPlaying("TestTitle", "TestArtist", "TestAlbum")
+	// if err != nil {
+	// 	log.Fatal(err)
+	// }
+
 	select {}
 }

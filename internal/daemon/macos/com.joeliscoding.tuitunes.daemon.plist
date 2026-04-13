@@ -3,7 +3,7 @@
 <plist version="1.0">
   <dict>
     <key>Label</key>
-    <string>com.example.tuitunes.daemon</string>
+    <string>com.joeliscoding.tuitunes.daemon</string>
 
     <key>ProgramArguments</key>
     <array>
