@@ -1,6 +1,7 @@
 package daemon
 
 import (
+	"container/list"
 	"fmt"
 	"log"
 	"net"
@@ -8,11 +9,11 @@ import (
 	"os/signal"
 	"strings"
 	"syscall"
-	"time"
-
-	"github.com/gopxl/beep/mp3"
-	"github.com/gopxl/beep/speaker"
+	"tuitunes/internal/daemon/audiodecoder"
+	"tuitunes/internal/daemon/macos"
 )
+
+var queue = list.New()
 
 func Run() error {
 	// TODO: make socket path configurable in global config
@@ -70,27 +71,45 @@ func Run() error {
 	}
 }
 
+func addToQueue(file string) {
+	queue.PushBack(file)
+}
+
 func playAudio(file string) {
+	fileExt := strings.ToLower(file[strings.LastIndex(file, ".")+1:])
+
 	f, err := os.Open(file)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	streamer, format, err := mp3.Decode(f)
+	switch fileExt {
+	case "mp3":
+		err := audiodecoder.PlayMP3(f)
+		if err != nil {
+			log.Fatal(err)
+		}
+	case "wav":
+		err := audiodecoder.PlayWAV(f)
+		if err != nil {
+			log.Fatal(err)
+		}
+	case "flac":
+		err := audiodecoder.PlayFLAC(f)
+		if err != nil {
+			log.Fatal(err)
+		}
+	default:
+		log.Fatalf("Unsupported file format: %s", fileExt)
+	}
+
+	updateNowPlaying(file)
+}
+
+func updateNowPlaying(file string) {
+	// nowplayinghelper is not done yet
+	err := macos.UpdateNowPlaying(file)
 	if err != nil {
 		log.Fatal(err)
 	}
-	defer streamer.Close()
-
-	speaker.Init(format.SampleRate, format.SampleRate.N(time.Second/10))
-
-	speaker.Play(streamer)
-
-	// nowplayinghelper is not done yet
-	// err = macos.UpdateNowPlaying("TestTitle", "TestArtist", "TestAlbum")
-	// if err != nil {
-	// 	log.Fatal(err)
-	// }
-
-	select {}
 }
