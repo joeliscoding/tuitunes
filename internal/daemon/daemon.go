@@ -7,9 +7,10 @@ import (
 	"net"
 	"os"
 	"os/signal"
+	"strconv"
 	"strings"
 	"syscall"
-	"tuitunes/internal/daemon/audiodecoder"
+	"tuitunes/internal/daemon/audioplayer"
 	"tuitunes/internal/daemon/macos"
 )
 
@@ -63,7 +64,19 @@ func Run() error {
 			if strings.Contains(string(buf[:n]), "play") {
 				//TODO: make this more robust, maybe use JSON to send commands and data
 				fmt.Println("Playing audio..." + string(buf[5:n]))
-				playAudio(string(buf[5:n])) // extract file path from command
+				go audioplayer.AddSong(string(buf[5:n])) // extract file path from command
+			} else if strings.Contains(string(buf[:n]), "pause") {
+				fmt.Println("Pausing audio...")
+				go audioplayer.PauseAudio()
+			} else if strings.Contains(string(buf[:n]), "volume") {
+				fmt.Println("Changing volume...")
+				delta := string(buf[7:n])
+				deltaFloat, err := strconv.ParseFloat(delta, 64)
+				if err != nil {
+					fmt.Fprintf(os.Stderr, "failed to parse volume delta: %v\n", err)
+					return
+				}
+				go audioplayer.ChangeVolume(deltaFloat)
 			} else {
 				fmt.Printf("Received: %s", string(buf[:n]))
 			}
@@ -73,37 +86,6 @@ func Run() error {
 
 func addToQueue(file string) {
 	queue.PushBack(file)
-}
-
-func playAudio(file string) {
-	fileExt := strings.ToLower(file[strings.LastIndex(file, ".")+1:])
-
-	f, err := os.Open(file)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	switch fileExt {
-	case "mp3":
-		err := audiodecoder.PlayMP3(f)
-		if err != nil {
-			log.Fatal(err)
-		}
-	case "wav":
-		err := audiodecoder.PlayWAV(f)
-		if err != nil {
-			log.Fatal(err)
-		}
-	case "flac":
-		err := audiodecoder.PlayFLAC(f)
-		if err != nil {
-			log.Fatal(err)
-		}
-	default:
-		log.Fatalf("Unsupported file format: %s", fileExt)
-	}
-
-	updateNowPlaying(file)
 }
 
 func updateNowPlaying(file string) {
