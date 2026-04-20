@@ -61,7 +61,6 @@ func main() {
 }
 
 func checkDaemonStatus() bool {
-	// TODO: Implement an actual check for daemon status
 	conn, err := net.Dial("unix", config.SocketPath())
 	if err != nil {
 		return false

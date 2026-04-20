@@ -22,11 +22,14 @@ var volume = &effects.Volume{
 	Silent:   false,
 }
 
+var ctrl *beep.Ctrl
+
 func AddSong(file string) error {
 	f, err := os.Open(file)
 	if err != nil {
 		return err
 	}
+	defer f.Close()
 
 	fileExt := strings.ToLower(file[strings.LastIndex(file, "."):])
 
@@ -86,19 +89,21 @@ func decodeFLAC(f *os.File) error {
 func playAudio(streamer beep.StreamSeekCloser, format beep.Format) error {
 	speaker.Init(format.SampleRate, format.SampleRate.N(time.Second/10))
 
-	ctrl := &beep.Ctrl{Streamer: streamer, Paused: false}
+	ctrl = &beep.Ctrl{Streamer: streamer, Paused: false}
 	volume.Streamer = ctrl
-	speaker.Play(volume)
 
-	for {
-		speaker.Lock()
-		ctrl.Paused = paused
-		speaker.Unlock()
-	}
+	done := make(chan bool)
+	speaker.Play(beep.Seq(volume, beep.Callback(func() {
+		done <- true
+	})))
+
+	<-done
+	return nil
 }
 
 func PauseAudio() {
 	paused = !paused
+	ctrl.Paused = paused
 }
 
 func ChangeVolume(delta float64) {
