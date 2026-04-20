@@ -97,9 +97,8 @@ func playAudio(streamer beep.StreamSeekCloser, format beep.Format) error {
 	}
 }
 
-func PauseAudio() error {
+func PauseAudio() {
 	paused = !paused
-	return nil
 }
 
 func ChangeVolume(delta float64) {

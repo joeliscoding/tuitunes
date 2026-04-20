@@ -3,7 +3,7 @@ package main
 import (
 	"log"
 
-	"tuitunes/internal/daemon"
+	"github.com/joeliscoding/tuitunes/internal/daemon"
 )
 
 func main() {

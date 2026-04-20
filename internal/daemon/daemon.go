@@ -10,32 +10,31 @@ import (
 	"strconv"
 	"strings"
 	"syscall"
-	"tuitunes/internal/daemon/audioplayer"
-	"tuitunes/internal/daemon/macos"
+
+	"github.com/joeliscoding/tuitunes/internal/config"
+	"github.com/joeliscoding/tuitunes/internal/daemon/audioplayer"
+	"github.com/joeliscoding/tuitunes/internal/daemon/macos"
 )
 
 var queue = list.New()
 
 func Run() error {
-	// TODO: make socket path configurable in global config
-	socketPath := "/tmp/tuitunesdaemon.sock"
-
-	if err := os.Remove(socketPath); err != nil && !os.IsNotExist(err) {
+	if err := os.Remove(config.SocketPath()); err != nil && !os.IsNotExist(err) {
 		return err
 	}
 
-	socket, err := net.Listen("unix", socketPath) // listen on Unix domain socket
+	socket, err := net.Listen("unix", config.SocketPath()) // listen on Unix domain socket
 	if err != nil {
 		return err
 	}
 	defer socket.Close()
-	defer os.Remove(socketPath)
+	defer os.Remove(config.SocketPath())
 
 	c := make(chan os.Signal, 1)
 	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
 	go func() {
 		<-c
-		os.Remove(socketPath) // clean up socket file on exit
+		os.Remove(config.SocketPath()) // clean up socket file on exit
 		os.Exit(0)
 	}()
 
@@ -56,19 +55,19 @@ func Run() error {
 				log.Fatal(err)
 			}
 
-			_, err = conn.Write([]byte("Command received")) // send response to client
-			if err != nil {
-				log.Fatal(err)
-			}
+			recievedCommand := string(buf[:n])
 
-			if strings.Contains(string(buf[:n]), "play") {
+			if strings.Contains(recievedCommand, "play") {
 				//TODO: make this more robust, maybe use JSON to send commands and data
 				fmt.Println("Playing audio..." + string(buf[5:n]))
-				go audioplayer.AddSong(string(buf[5:n])) // extract file path from command
-			} else if strings.Contains(string(buf[:n]), "pause") {
+				err = audioplayer.AddSong(string(buf[5:n]))
+				if err != nil {
+					log.Fatal(err)
+				}
+			} else if strings.Contains(recievedCommand, "pause") {
 				fmt.Println("Pausing audio...")
-				go audioplayer.PauseAudio()
-			} else if strings.Contains(string(buf[:n]), "volume") {
+				audioplayer.PauseAudio()
+			} else if strings.Contains(recievedCommand, "volume") {
 				fmt.Println("Changing volume...")
 				delta := string(buf[7:n])
 				deltaFloat, err := strconv.ParseFloat(delta, 64)
@@ -76,9 +75,14 @@ func Run() error {
 					fmt.Fprintf(os.Stderr, "failed to parse volume delta: %v\n", err)
 					return
 				}
-				go audioplayer.ChangeVolume(deltaFloat)
+				audioplayer.ChangeVolume(deltaFloat)
+			} else if strings.Contains(recievedCommand, "ping") {
+				_, err = conn.Write([]byte("pong")) // send response to client
+				if err != nil {
+					log.Fatal(err)
+				}
 			} else {
-				fmt.Printf("Received: %s", string(buf[:n]))
+				fmt.Printf("Received: %s", recievedCommand)
 			}
 		}(conn)
 	}

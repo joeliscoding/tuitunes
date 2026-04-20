@@ -1,4 +1,4 @@
-module tuitunes
+module github.com/joeliscoding/tuitunes
 
 go 1.25.0
 

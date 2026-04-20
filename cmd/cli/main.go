@@ -4,14 +4,34 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"os/exec"
 	"strings"
+	"syscall"
 	"time"
+
+	"github.com/joeliscoding/tuitunes/internal/config"
 )
 
-// TODO: make socket path configurable in global config
-const socketPath = "/tmp/tuitunesdaemon.sock"
-
 func main() {
+	config.SetEnvDefaults() // Load environment variables from env.go file
+
+	// Check if daemon is already running by trying to connect to the socket
+	if !checkDaemonStatus() {
+		fmt.Println("Daemon is not running. Starting daemon...")
+		cmd := exec.Command(config.DaemonPath())
+		cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
+		if err := cmd.Start(); err != nil {
+			fmt.Fprintf(os.Stderr, "failed to start daemon: %v\n", err)
+		}
+		if cmd.Process != nil {
+			_ = cmd.Process.Release()
+		}
+
+		// Wait for the daemon to start
+		waitForDaemon()
+	} else {
+		fmt.Println("Daemon is already running.")
+	}
 
 	filePath := strings.Join(os.Args[2:], " ")
 	switch os.Args[1] {
@@ -32,7 +52,7 @@ func main() {
 			os.Exit(1)
 		}
 	default:
-		fmt.Fprintf(os.Stderr, "usage: go run cmd/cli/main.go play /path/to/file.mp3\n")
+		fmt.Fprintf(os.Stderr, "usage: go run ./cmd/cli play /path/to/file.mp3\n")
 		os.Exit(1)
 	}
 
@@ -40,8 +60,48 @@ func main() {
 
 }
 
+func checkDaemonStatus() bool {
+	// TODO: Implement an actual check for daemon status
+	conn, err := net.Dial("unix", config.SocketPath())
+	if err != nil {
+		return false
+	}
+	defer conn.Close()
+
+	if _, err := conn.Write([]byte("ping")); err != nil {
+		return false
+	}
+
+	_ = conn.SetReadDeadline(time.Now().Add(500 * time.Millisecond))
+	buf := make([]byte, 1024)
+	n, err := conn.Read(buf)
+	if err != nil || n == 0 {
+		return false
+	}
+
+	response := strings.TrimSpace(string(buf[:n]))
+	return strings.Contains(response, "pong")
+}
+
+func waitForDaemon() {
+	timeout := time.After(5 * time.Second)
+	tick := time.Tick(100 * time.Millisecond)
+
+	for {
+		select {
+		case <-timeout:
+			fmt.Fprintln(os.Stderr, "timed out waiting for daemon to start")
+			os.Exit(1)
+		case <-tick:
+			if checkDaemonStatus() {
+				return
+			}
+		}
+	}
+}
+
 func sendPlayCommand(filePath string) error {
-	conn, err := net.Dial("unix", socketPath)
+	conn, err := net.Dial("unix", config.SocketPath())
 	if err != nil {
 		return err
 	}
@@ -62,7 +122,7 @@ func sendPlayCommand(filePath string) error {
 }
 
 func sendPauseCommand() error {
-	conn, err := net.Dial("unix", socketPath)
+	conn, err := net.Dial("unix", config.SocketPath())
 	if err != nil {
 		return err
 	}
@@ -83,7 +143,7 @@ func sendPauseCommand() error {
 }
 
 func sendVolumeCommand(delta string) error {
-	conn, err := net.Dial("unix", socketPath)
+	conn, err := net.Dial("unix", config.SocketPath())
 	if err != nil {
 		return err
 	}
