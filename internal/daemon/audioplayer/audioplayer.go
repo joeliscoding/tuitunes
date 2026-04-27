@@ -23,6 +23,7 @@ var volume = &effects.Volume{
 }
 
 var ctrl *beep.Ctrl
+var Shutdown func() // stops daemon when playback finishes
 
 func AddSong(file string) error {
 	f, err := os.Open(file)
@@ -98,6 +99,10 @@ func playAudio(streamer beep.StreamSeekCloser, format beep.Format) error {
 	})))
 
 	<-done
+	if Shutdown != nil {
+		Shutdown()
+	}
+
 	return nil
 }
 

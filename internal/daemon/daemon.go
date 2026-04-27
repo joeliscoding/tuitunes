@@ -2,6 +2,7 @@ package daemon
 
 import (
 	"container/list"
+	"context"
 	"fmt"
 	"log"
 	"net"
@@ -30,17 +31,33 @@ func Run() error {
 	defer socket.Close()
 	defer os.Remove(config.SocketPath())
 
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	audioplayer.Shutdown = cancel // make shutdown function available to audioplayer
+
 	c := make(chan os.Signal, 1)
 	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
 	go func() {
 		<-c
+		cancel()
 		os.Remove(config.SocketPath()) // clean up socket file on exit
 		os.Exit(0)
 	}()
 
+	// close listener when context is done (triggered by audioplayer)
+	go func() {
+		<-ctx.Done()
+		socket.Close()
+	}()
+
 	for {
+		fmt.Println("Waiting for client connections...")
 		conn, err := socket.Accept() // wait for a client to connect
 		if err != nil {
+			if ctx.Err() != nil {
+				return nil
+			}
 			return err
 		}
 
