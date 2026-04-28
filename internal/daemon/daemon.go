@@ -1,7 +1,6 @@
 package daemon
 
 import (
-	"container/list"
 	"context"
 	"fmt"
 	"log"
@@ -16,8 +15,6 @@ import (
 	"github.com/joeliscoding/tuitunes/internal/daemon/audioplayer"
 	"github.com/joeliscoding/tuitunes/internal/daemon/macos"
 )
-
-var queue = list.New()
 
 func Run() error {
 	if err := os.Remove(config.SocketPath()); err != nil && !os.IsNotExist(err) {
@@ -102,10 +99,6 @@ func Run() error {
 			}
 		}(conn)
 	}
-}
-
-func addToQueue(file string) {
-	queue.PushBack(file)
 }
 
 func updateNowPlaying(file string) {
