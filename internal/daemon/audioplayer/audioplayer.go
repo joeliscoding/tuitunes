@@ -14,6 +14,7 @@ import (
 	"github.com/gopxl/beep/v2/wav"
 )
 
+var running = false
 var paused = false
 var volume = &effects.Volume{
 	Streamer: nil,
@@ -25,69 +26,113 @@ var volume = &effects.Volume{
 var ctrl *beep.Ctrl
 var Shutdown func() // stops daemon when playback finishes
 
-func AddSong(file string) error {
-	f, err := os.Open(file)
-	if err != nil {
-		return err
+var queue []string
+var queueIndex int = 0
+
+func Enqueue(file string) error {
+	queue = append(queue, file)
+	fmt.Printf("Added to queue: %s\n", file)
+
+	// start playback if not already running
+	if !running {
+		running = true
+		err := playQueue()
+		if err != nil {
+			return err
+		}
 	}
-	defer f.Close()
+	return nil
+}
 
-	fileExt := strings.ToLower(file[strings.LastIndex(file, "."):])
+func playQueue() error {
+	for queueIndex < len(queue) {
+		fmt.Printf("Now playing: %s\n", queue[queueIndex])
+		file := queue[queueIndex]
+		f, err := os.Open(file)
+		if err != nil {
+			return err
+		}
+		defer f.Close()
 
-	switch fileExt {
-	case ".mp3":
-		err := decodeMP3(f)
-		if err != nil {
-			return err
+		fileExt := strings.ToLower(file[strings.LastIndex(file, "."):])
+
+		switch fileExt {
+		case ".mp3":
+			err := playMP3(f)
+			if err != nil {
+				return err
+			}
+		case ".wav":
+			err := playWAV(f)
+			if err != nil {
+				return err
+			}
+		case ".flac":
+			err := playFLAC(f)
+			if err != nil {
+				return err
+			}
+		default:
+			return fmt.Errorf("unsupported file type: %s", fileExt)
 		}
-	case ".wav":
-		err := decodeWAV(f)
-		if err != nil {
-			return err
-		}
-	case ".flac":
-		err := decodeFLAC(f)
-		if err != nil {
-			return err
-		}
-	default:
-		return fmt.Errorf("unsupported file type: %s", fileExt)
+
+		queueIndex++
+	}
+
+	// shutdown daemon process after finishing queue
+	if Shutdown != nil {
+		Shutdown()
 	}
 
 	return nil
 }
 
-func decodeMP3(f *os.File) error {
+func playMP3(f *os.File) error {
 	streamer, format, err := mp3.Decode(f)
 	if err != nil {
 		return err
 	}
 	defer streamer.Close()
-	playAudio(streamer, format)
+
+	err = playStream(streamer, format)
+	if err != nil {
+		return err
+	}
 	return nil
 }
 
-func decodeWAV(f *os.File) error {
+func playWAV(f *os.File) error {
 	streamer, format, err := wav.Decode(f)
 	if err != nil {
 		return err
 	}
 	defer streamer.Close()
-	playAudio(streamer, format)
+
+	err = playStream(streamer, format)
+	if err != nil {
+		return err
+	}
 	return nil
 }
 
-func decodeFLAC(f *os.File) error {
+func playFLAC(f *os.File) error {
 	streamer, format, err := flac.Decode(f)
 	if err != nil {
 		return err
 	}
 	defer streamer.Close()
-	playAudio(streamer, format)
+
+	err = playStream(streamer, format)
+	if err != nil {
+		return err
+	}
 	return nil
 }
 
-func playAudio(streamer beep.StreamSeekCloser, format beep.Format) error {
+func playStream(streamer beep.StreamSeekCloser, format beep.Format) error {
+	// TODO: add queue streamer, for seamless transitions between tracks in the queue
+	// To achieve this, the next song in the queue should always be added to the beep queue streamer
+
 	speaker.Init(format.SampleRate, format.SampleRate.N(time.Second/10))
 
 	ctrl = &beep.Ctrl{Streamer: streamer, Paused: false}
@@ -99,19 +144,16 @@ func playAudio(streamer beep.StreamSeekCloser, format beep.Format) error {
 	})))
 
 	<-done
-	if Shutdown != nil {
-		Shutdown()
-	}
 
 	return nil
 }
 
-func PauseAudio() {
+func TogglePause() {
 	paused = !paused
 	ctrl.Paused = paused
 }
 
-func ChangeVolume(delta float64) {
+func AdjustVolume(delta float64) {
 	if volume.Volume+delta > -15 && volume.Volume+delta < 0 {
 		volume.Volume += delta
 		fmt.Printf("Volume: %f\n", volume.Volume)

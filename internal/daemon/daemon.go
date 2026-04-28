@@ -52,7 +52,6 @@ func Run() error {
 	}()
 
 	for {
-		fmt.Println("Waiting for client connections...")
 		conn, err := socket.Accept() // wait for a client to connect
 		if err != nil {
 			if ctx.Err() != nil {
@@ -76,14 +75,14 @@ func Run() error {
 
 			if strings.Contains(recievedCommand, "play") {
 				//TODO: make this more robust, maybe use JSON to send commands and data
-				fmt.Println("Playing audio..." + string(buf[5:n]))
-				err = audioplayer.AddSong(string(buf[5:n]))
+				fmt.Println("Recieved audio..." + string(buf[5:n]))
+				err = audioplayer.Enqueue(string(buf[5:n]))
 				if err != nil {
 					log.Fatal(err)
 				}
 			} else if strings.Contains(recievedCommand, "pause") {
 				fmt.Println("Pausing audio...")
-				audioplayer.PauseAudio()
+				audioplayer.TogglePause()
 			} else if strings.Contains(recievedCommand, "volume") {
 				fmt.Println("Changing volume...")
 				delta := string(buf[7:n])
@@ -92,7 +91,7 @@ func Run() error {
 					fmt.Fprintf(os.Stderr, "failed to parse volume delta: %v\n", err)
 					return
 				}
-				audioplayer.ChangeVolume(deltaFloat)
+				audioplayer.AdjustVolume(deltaFloat)
 			} else if strings.Contains(recievedCommand, "ping") {
 				_, err = conn.Write([]byte("pong")) // send response to client
 				if err != nil {
